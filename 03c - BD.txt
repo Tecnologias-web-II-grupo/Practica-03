@@ -1,0 +1,23 @@
+create database "principal"
+	with
+		owner = postgres
+		encoding = 'utf8'			
+		lc_collate = 'en_us.utf8'
+		lc_ctype = 'en_us.utf8'
+		locale_provider = 'libc'
+		tablespace = pg_default
+		connection limit = -1
+		is_template = false;
+
+
+create table if not exists principal.tb_imagenes(
+    id smallint not null,
+    nombre character varying(35) collate pg_catalog."default" not null,
+    imagen text collate pg_catalog."default" not null,
+    mime character varying(25) collate pg_catalog."default" not null,
+    constraint tb_imagenes_pkey primary key (id)
+)tablespace pg_default;
+
+
+alter table if exists principal.tb_imagenes
+    owner to postgres;
