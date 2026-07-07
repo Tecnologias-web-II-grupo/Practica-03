@@ -1,14 +1,11 @@
 import mongoose from "mongoose";
 
-// Import the secret key and the jsonwebtoken objects
 import secret from "../config/configSecret.js";
 import jsonwebtoken from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 
-// Create the database variable
 const Users = mongoose.model('Users');
 
-// Create the signup function
 export const signup = async (req, res, next) => {
     const user = new Users({
         fullname: req.body.fullname,
@@ -19,38 +16,34 @@ export const signup = async (req, res, next) => {
     });
 
     await Users.insertMany(user).then(() => {
-        console.log("User was registered successfully!");
         const msgJson = {
             status_code: 200,
             status_message: "OK",
-            body_message: "User was registered successfully!"
+            body_message: "Usuario registrado exitosamente"
         };
         res.status(200).json(msgJson);
     }).catch(err => {
-        console.log("error", err);
         const msgJson = {
             status_code: 500,
             status_message: "Server error",
-            body_message: err
+            body_message: err.message
         };
         res.status(500).json(msgJson);
     });
-}
+};
 
-// Create the signin function
 export const signin = async (req, res) => {
     await Users.findOne({username: req.body.username}).then((user) => {
         if (!user) {
             const msgJson = {
                 status_code: 404,
                 status_message: "Not found",
-                body_message: "The user not exists...!"
+                body_message: "El usuario no existe"
             };
-
             return res.status(404).send(msgJson);
         }
 
-        var passwordIsValid = bcrypt.compareSync(
+        const passwordIsValid = bcrypt.compareSync(
             req.body.password,
             user.password
         );
@@ -59,16 +52,14 @@ export const signin = async (req, res) => {
             const msgJson = {
                 status_code: 401,
                 status_message: "Unauthorized",
-                body_message: "The password is invalid...!"
+                body_message: "La contraseña es inválida"
             };
-            res.status(401).json(msgJson);
+            return res.status(401).json(msgJson);
         }
 
-        var token = jsonwebtoken.sign({ id: user._id }, secret, {
-            expiresIn: 86400, // 24 hours (60 secs * 60 mins * 24 hrs)
+        const token = jsonwebtoken.sign({ id: user._id }, secret, {
+            expiresIn: 86400,
         });
-
-        var nivel = user.rol.toUpperCase();
 
         req.session.token = token;
 
@@ -79,7 +70,7 @@ export const signin = async (req, res) => {
                 id: user._id,
                 username: user.username,
                 email: user.email,
-                roles: nivel
+                rol: user.rol
             }
         };
 
@@ -88,24 +79,149 @@ export const signin = async (req, res) => {
         const msgJson = {
             status_code: 500,
             status_message: "Internal Server Error",
-            body_message: err
+            body_message: err.message
         };
         res.status(500).send(msgJson);
     })
 };
 
-// Create the signout function
 export const signout = async (req, res) => {
     try {
         req.session = null;
-        console.log("The user has logged out...!");
         const msgJson = {
             status_code: 200,
             status_message: "OK",
-            body_message: "The user has logged out...!"
+            body_message: "Sesión cerrada exitosamente"
         };
         res.status(200).json(msgJson);
     } catch (err) {
-        this.next(err);
+        next(err);
+    }
+};
+
+export const getAll = async (req, res) => {
+    try {
+        const users = await Users.find();
+        const msgJson = {
+            status_code: 200,
+            status_message: "OK",
+            body_message: users
+        };
+        res.status(200).json(msgJson);
+    } catch (err) {
+        const msgJson = {
+            status_code: 500,
+            status_message: "Internal Server Error",
+            body_message: err.message
+        };
+        res.status(500).json(msgJson);
+    }
+};
+
+export const getById = async (req, res) => {
+    try {
+        const user = await Users.findById(req.params.id);
+        if (!user) {
+            const msgJson = {
+                status_code: 404,
+                status_message: "Not found",
+                body_message: "Usuario no encontrado"
+            };
+            return res.status(404).json(msgJson);
+        }
+        const msgJson = {
+            status_code: 200,
+            status_message: "OK",
+            body_message: user
+        };
+        res.status(200).json(msgJson);
+    } catch (err) {
+        const msgJson = {
+            status_code: 500,
+            status_message: "Internal Server Error",
+            body_message: err.message
+        };
+        res.status(500).json(msgJson);
+    }
+};
+
+export const update = async (req, res) => {
+    try {
+        const user = await Users.findById(req.params.id);
+        if (!user) {
+            const msgJson = {
+                status_code: 404,
+                status_message: "Not found",
+                body_message: "Usuario no encontrado"
+            };
+            return res.status(404).json(msgJson);
+        }
+
+        if (user.isProtected) {
+            const msgJson = {
+                status_code: 403,
+                status_message: "Forbidden",
+                body_message: "No se puede modificar el usuario ROOT"
+            };
+            return res.status(403).json(msgJson);
+        }
+
+        if (req.body.fullname) user.fullname = req.body.fullname;
+        if (req.body.email) user.email = req.body.email;
+        if (req.body.password) user.password = bcrypt.hashSync(req.body.password, 8);
+        if (req.body.rol) user.rol = req.body.rol;
+
+        await user.save();
+        const msgJson = {
+            status_code: 200,
+            status_message: "OK",
+            body_message: "Usuario actualizado exitosamente"
+        };
+        res.status(200).json(msgJson);
+    } catch (err) {
+        const msgJson = {
+            status_code: 500,
+            status_message: "Internal Server Error",
+            body_message: err.message
+        };
+        res.status(500).json(msgJson);
+    }
+};
+
+export const deleteUser = async (req, res) => {
+    try {
+        const user = await Users.findById(req.params.id);
+        if (!user) {
+            const msgJson = {
+                status_code: 404,
+                status_message: "Not found",
+                body_message: "Usuario no encontrado"
+            };
+            return res.status(404).json(msgJson);
+        }
+
+        if (user.isProtected) {
+            const msgJson = {
+                status_code: 403,
+                status_message: "Forbidden",
+                body_message: "No se puede eliminar el usuario ROOT"
+            };
+            return res.status(403).json(msgJson);
+        }
+
+        await Users.findByIdAndDelete(req.params.id);
+        const msgJson = {
+            status_code: 200,
+            status_message: "OK",
+            body_message: "Usuario eliminado exitosamente"
+        };
+        res.status(200).json(msgJson);
+    } catch (err) {
+        const msgJson = {
+            status_code: 500,
+            status_message: "Internal Server Error",
+            body_message: err.message
+        };
+        res.status(500).json(msgJson);
     }
 };
