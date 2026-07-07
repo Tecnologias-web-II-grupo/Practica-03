@@ -3,6 +3,7 @@ import cors from 'cors';
 import mongoose from 'mongoose';
 import cookieSession from "cookie-session";
 import helmet from "helmet";
+import bcrypt from 'bcryptjs';
 
 
 // ---------------------------------------------------
@@ -68,7 +69,7 @@ import dbConfig  from './config/configDB.js';
 
 // Try to connect to the database
 mongoose.set('strictQuery', true);
-mongoose.connect(`mongodb://${dbConfig.USER}:${dbConfig.PASS}@${dbConfig.HOST}/`,{ dbName: dbConfig.DB })
+mongoose.connect(`mongodb://${dbConfig.HOST}:${dbConfig.PORT}/${dbConfig.DB}`)
     .then(() => {
         console.log("Successfully connect to MongoDB.");
         initial().then(r => console.log("Initial roles created"));
@@ -85,33 +86,64 @@ import './models/mdl_Roles.js';
 // Create the initial roles if they do not exist
 async function initial() {
     const Roles = mongoose.model('Roles');
+    const Users = mongoose.model('Users');
 
     await Roles.estimatedDocumentCount().then((count) => {
         if (count === 0) {
             const newRoles = [
                 {
-                    name: "customer",
-                    level: 1,
-                    description: "Business client"
-                },
-                {
-                    name: "user",
-                    level: 3,
-                    description: "Normal user"
+                    name: "root",
+                    level: 4,
+                    description: "Rol superior, soporte global"
                 },
                 {
                     name: "admin",
-                    level: 5,
-                    description: "Administrator"
-                }];
+                    level: 3,
+                    description: "Rol administrativo (acceso parcial actualizaciones/consultas)"
+                },
+                {
+                    name: "user",
+                    level: 2,
+                    description: "Usuario normal (acceso parcial)"
+                },
+                {
+                    name: "guest",
+                    level: 1,
+                    description: "Invitado (solo ciertas consultas)"
+                }
+            ];
 
             Roles.insertMany(newRoles).then(() => {
-                console.log("added 'customer', 'user' and 'admin' to roles collection");
+                console.log("Roles creados: root, admin, user, guest");
+                createRootUser();
             }).catch(err => {
-                console.log("error", err);
+                console.log("Error al crear roles:", err);
             });
         }
     });
+}
+
+async function createRootUser() {
+    const Users = mongoose.model('Users');
+    
+    const rootExists = await Users.findOne({ username: "root" });
+    
+    if (!rootExists) {
+        const newRootUser = new Users({
+            fullname: "Administrator Root",
+            email: "yul@gmail.com",
+            username: "root",
+            password: bcrypt.hashSync("root123456", 8),
+            rol: "root",
+            isProtected: true
+        });
+        
+        await newRootUser.save().then(() => {
+            console.log("Usuario ROOT creado exitosamente");
+        }).catch(err => {
+            console.log("Error al crear usuario ROOT:", err);
+        });
+    }
 }
 
 
