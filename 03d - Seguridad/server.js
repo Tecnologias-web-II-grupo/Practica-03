@@ -3,6 +3,7 @@ import cors from 'cors';
 import mongoose from 'mongoose';
 import cookieSession from "cookie-session";
 import helmet from "helmet";
+import rateLimit from "express-rate-limit";
 import bcrypt from 'bcryptjs';
 
 
@@ -11,6 +12,20 @@ import bcrypt from 'bcryptjs';
 // ---------------------------------------------------
 // Create the express app
 const app = express();
+
+// Global rate limiting for the API
+const apiLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 100, // limit each IP to 100 requests per windowMs
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: {
+        status_code: 429,
+        status_message: "Too Many Requests",
+        body_message: "Demasiadas solicitudes. Intente de nuevo más tarde."
+    }
+});
+app.use(apiLimiter);
 
 // Set up CORS
 var corsOptions = {
@@ -23,15 +38,70 @@ var corsOptions = {
 // and other web origins. This is a security feature to prevent unauthorized access.
 app.use(cors(corsOptions));
 
-// Parse requests of content-type - application/json
-app.use(express.json());
+// Limit request body size for JSON and URL-encoded payloads
+app.use(express.json({ limit: '100kb' }));
+app.use(express.urlencoded({ extended: true, limit: '10kb' }));
 
-// Parse requests of content-type - application/x-www-form-urlencoded
-app.use(express.urlencoded({ extended: true }));
+// Protect headers and enforce Content Security Policy
+app.use(
+    helmet({
+        contentSecurityPolicy: {
+            directives: {
+                defaultSrc: ["'self'"],
+                scriptSrc: ["'self'"],
+                styleSrc: ["'self'", "'unsafe-inline'"],
+                connectSrc: ["'self'", "http://localhost:5010"],
+                imgSrc: ["'self'", "data:"],
+                objectSrc: ["'none'"],
+                baseUri: ["'self'"],
+                frameAncestors: ["'none'"]
+            }
+        }
+    })
+);
 
-// Enable Helmet, a collection of 14 smaller middleware functions that set HTTP headers
-// to secure the application
-app.use(helmet());
+// Limit response payload size to avoid sending overly large responses
+const MAX_RESPONSE_SIZE_BYTES = 200 * 1024; // 200 KB
+app.use((req, res, next) => {
+    let sentBytes = 0;
+    const originalWrite = res.write.bind(res);
+    const originalEnd = res.end.bind(res);
+
+    res.write = function (chunk, encoding, callback) {
+        if (chunk) {
+            sentBytes += Buffer.isBuffer(chunk) ? chunk.length : Buffer.byteLength(chunk, encoding);
+        }
+        if (sentBytes > MAX_RESPONSE_SIZE_BYTES) {
+            if (!res.headersSent) {
+                res.statusCode = 413;
+                return originalEnd(JSON.stringify({
+                    status_code: 413,
+                    status_message: "Payload Too Large",
+                    body_message: "La respuesta supera el tamaño máximo permitido."
+                }));
+            }
+        }
+        return originalWrite(chunk, encoding, callback);
+    };
+
+    res.end = function (chunk, encoding, callback) {
+        if (chunk) {
+            sentBytes += Buffer.isBuffer(chunk) ? chunk.length : Buffer.byteLength(chunk, encoding);
+        }
+        if (sentBytes > MAX_RESPONSE_SIZE_BYTES) {
+            if (!res.headersSent) {
+                res.statusCode = 413;
+                return originalEnd(JSON.stringify({
+                    status_code: 413,
+                    status_message: "Payload Too Large",
+                    body_message: "La respuesta supera el tamaño máximo permitido."
+                }));
+            }
+        }
+        return originalEnd(chunk, encoding, callback);
+    };
+    next();
+});
 
 // Add cookie session
 var expiryDate = new Date( Date.now() + 60 * 60 * 1000 ); // 1 hour
@@ -167,6 +237,26 @@ import categories from "./routes/rout_Categories.js";
 // Create all listener for each route link
 app.use('/users', users);
 app.use('/categories', categories);
+
+// Catch unmatched routes and return JSON 404
+app.use((req, res) => {
+    res.status(404).json({
+        status_code: 404,
+        status_message: "Not Found",
+        body_message: "La ruta solicitada no existe"
+    });
+});
+
+// Global error handler
+app.use((err, req, res, next) => {
+    console.error(err);
+    const status = err.status || 500;
+    res.status(status).json({
+        status_code: status,
+        status_message: status === 500 ? "Internal Server Error" : err.status_message || "Error",
+        body_message: err.message || "Ocurrió un error en el servidor"
+    });
+});
 
 // ---------------------------------------------------
 // Section - Creates server
