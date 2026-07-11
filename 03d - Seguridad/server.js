@@ -6,7 +6,7 @@ import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import bcrypt from 'bcryptjs';
 
-
+//prueba
 // ---------------------------------------------------
 // Section - Creates and configures the application
 // ---------------------------------------------------
